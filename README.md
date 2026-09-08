@@ -200,3 +200,8 @@ repo**.
 ## License
 
 Apache-2.0.
+
+## Socials
+
+- [Discord](https://discord.gg/pMwVZf8TX)
+- [Telegram](https://t.me/+RZKO3ffLffY0NDg0)
