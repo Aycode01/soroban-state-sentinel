@@ -13,10 +13,12 @@ mod mock_rpc;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
+use stellar_strkey::Strkey;
 use stellar_xdr::{
-    ContractDataDurability, ContractExecutable, ContractId, Hash, LedgerEntryData, LedgerKey,
-    LedgerKeyContractCode, LedgerKeyContractData, Limits, ReadXdr, ScAddress, ScContractInstance,
-    ScSymbol, ScVal, WriteXdr,
+    AccountEntry, AccountEntryExt, AccountId, ContractDataDurability, ContractExecutable,
+    ContractId, Hash, LedgerEntryData, LedgerKey, LedgerKeyAccount, LedgerKeyContractCode,
+    LedgerKeyContractData, Limits, PublicKey, ReadXdr, ScAddress, ScContractInstance, ScSymbol,
+    ScVal, SequenceNumber, Thresholds, Uint256, VecM, WriteXdr,
 };
 
 /// The docs `Counter` contract id used in the archived-instance scenario.
@@ -28,8 +30,8 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
 /// Path to the compiled CLI binary.
 fn binary() -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../target/debug/soroban-state-sentinel");
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/soroban-state-sentinel");
     assert!(
         path.exists(),
         "CLI binary not found at {path:?} — run `cargo build` first"
@@ -72,6 +74,54 @@ fn code_key(hash: [u8; 32]) -> String {
     key.to_xdr_base64(Limits::none()).expect("encode key")
 }
 
+/// Decode a `C…` contract id strkey into its raw 32 bytes.
+///
+/// The CLI scans the contract id it decodes from the `C…` argument, so the mock
+/// entries must be keyed under exactly those bytes or the scan will report every
+/// entry as archived.
+fn contract_bytes(contract_strkey: &str) -> [u8; 32] {
+    match Strkey::from_string(contract_strkey).expect("valid contract strkey") {
+        Strkey::Contract(c) => c.0,
+        other => panic!("expected contract strkey, got {other:?}"),
+    }
+}
+
+/// Base64 `LedgerKey::Account` for a `G…` public key, as `get_entry` requests it.
+fn account_key(account_strkey: &str) -> String {
+    let pk: stellar_strkey::ed25519::PublicKey =
+        account_strkey.parse().expect("valid account strkey");
+    let key = LedgerKey::Account(LedgerKeyAccount {
+        account_id: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256(pk.0))),
+    });
+    key.to_xdr_base64(Limits::none()).expect("encode key")
+}
+
+/// A `getLedgerEntries` entry object for a funded `G…` account.
+fn account_entry_json(account_strkey: &str, seq_num: i64) -> String {
+    let pk: stellar_strkey::ed25519::PublicKey =
+        account_strkey.parse().expect("valid account strkey");
+    let account_id = AccountId(PublicKey::PublicKeyTypeEd25519(Uint256(pk.0)));
+    let entry = LedgerEntryData::Account(AccountEntry {
+        account_id: account_id.clone(),
+        balance: 10_000_000_000,
+        seq_num: SequenceNumber(seq_num),
+        num_sub_entries: 0,
+        inflation_dest: None,
+        flags: 0,
+        home_domain: Default::default(),
+        thresholds: Thresholds([0; 4]),
+        signers: VecM::default(),
+        ext: AccountEntryExt::V0,
+    });
+    serde_json::json!({
+        "key": account_key(account_strkey),
+        "xdr": entry.to_xdr_base64(Limits::none()).expect("encode entry"),
+        "lastModifiedLedgerSeq": 4_500_000,
+        "liveUntilLedgerSeq": 0,
+    })
+    .to_string()
+}
+
 /// Build a `getLedgerEntries` entry object for a synthetic contract-data entry.
 fn data_entry_json(
     contract_bytes: [u8; 32],
@@ -99,7 +149,11 @@ fn data_entry_json(
 }
 
 /// A synthetic contract-instance entry whose code is wasm with the given hash.
-fn instance_entry_json(contract_bytes: [u8; 32], wasm_hash: [u8; 32], live_until: u32) -> (String, String) {
+fn instance_entry_json(
+    contract_bytes: [u8; 32],
+    wasm_hash: [u8; 32],
+    live_until: u32,
+) -> (String, String) {
     let instance = ScVal::ContractInstance(ScContractInstance {
         executable: ContractExecutable::Wasm(Hash(wasm_hash)),
         storage: None,
@@ -113,25 +167,18 @@ fn instance_entry_json(contract_bytes: [u8; 32], wasm_hash: [u8; 32], live_until
     )
 }
 
-#[tokio::test]
+// The mock RPC server runs on the test runtime's worker threads, so the tests
+// must use a multi-thread runtime: they block on `Command::output()` while the
+// mock accepts connections.
+#[tokio::test(flavor = "multi_thread")]
 async fn scan_reports_archived_docs_counter_contract() {
     let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
         .with_config_fixture(FIXTURES)
         .start()
         .await;
 
-    let out = run(&[
-        "scan",
-        COUNTER_CONTRACT,
-        "--rpc-url",
-        &url,
-        "--json",
-    ]);
-    assert!(
-        out.status.success(),
-        "scan failed: {}",
-        stderr_of(&out)
-    );
+    let out = run(&["scan", COUNTER_CONTRACT, "--rpc-url", &url, "--json"]);
+    assert!(out.status.success(), "scan failed: {}", stderr_of(&out));
     let doc = json_of(&out);
 
     assert_eq!(doc["schema_version"], "1.0.0");
@@ -145,9 +192,11 @@ async fn scan_reports_archived_docs_counter_contract() {
     assert!(doc["entries"][0]["extend_to_healthy_cost_stroops"].is_null());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn scan_classifies_live_entries_into_bands() {
-    let contract = [0xABu8; 32];
+    // The CLI decodes COUNTER_CONTRACT and scans under those bytes; seed the
+    // mock entries under the same contract id.
+    let contract = contract_bytes(COUNTER_CONTRACT);
     let wasm_hash = [0xCDu8; 32];
 
     let mut mock = mock_rpc::MockRpc::from_fixtures(FIXTURES).with_config_fixture(FIXTURES);
@@ -206,11 +255,7 @@ async fn scan_classifies_live_entries_into_bands() {
         &missing_scval_b64,
         "--json",
     ]);
-    assert!(
-        out.status.success(),
-        "scan failed: {}",
-        stderr_of(&out)
-    );
+    assert!(out.status.success(), "scan failed: {}", stderr_of(&out));
     let doc = json_of(&out);
 
     let bands: Vec<&str> = doc["entries"]
@@ -219,16 +264,29 @@ async fn scan_classifies_live_entries_into_bands() {
         .iter()
         .map(|e| e["band"].as_str().unwrap())
         .collect();
-    assert_eq!(bands, vec!["healthy", "expiring_soon", "critical", "archived"]);
+    assert_eq!(
+        bands,
+        vec!["healthy", "expiring_soon", "critical", "archived"]
+    );
 
     let entries = doc["entries"].as_array().unwrap();
     // Healthy instance already beyond the horizon: extend cost 0.
     assert_eq!(entries[0]["extend_to_healthy_cost_stroops"], 0);
     // ExpiringSoon code needs an extension.
-    assert!(entries[1]["extend_to_healthy_cost_stroops"].as_i64().unwrap() > 0);
+    assert!(
+        entries[1]["extend_to_healthy_cost_stroops"]
+            .as_i64()
+            .unwrap()
+            > 0
+    );
     assert!(entries[1]["restore_cost_stroops"].is_null());
     // Critical key needs an extension too.
-    assert!(entries[2]["extend_to_healthy_cost_stroops"].as_i64().unwrap() > 0);
+    assert!(
+        entries[2]["extend_to_healthy_cost_stroops"]
+            .as_i64()
+            .unwrap()
+            > 0
+    );
     // Archived key can only be restored.
     assert!(entries[3]["extend_to_healthy_cost_stroops"].is_null());
     assert!(entries[3]["restore_cost_stroops"].as_i64().unwrap() > 0);
@@ -240,7 +298,7 @@ async fn scan_classifies_live_entries_into_bands() {
     assert!(doc["summary"]["has_critical"].as_bool().unwrap());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fail_on_critical_sets_exit_code() {
     let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
         .with_config_fixture(FIXTURES)
@@ -258,10 +316,29 @@ async fn fail_on_critical_sets_exit_code() {
     assert_eq!(out.status.code(), Some(1));
 
     // A scan of a live, healthy contract exits 0 even with --fail-on-critical.
-    let (k, e) = instance_entry_json([0x11u8; 32], [0x22u8; 32], 4_566_959 + 900_000);
+    // Seed both the instance and its code entry so neither is Archived.
+    let wasm_hash = [0x22u8; 32];
+    let (k, e) = instance_entry_json(
+        contract_bytes(COUNTER_CONTRACT),
+        wasm_hash,
+        4_566_959 + 900_000,
+    );
+    let code_k = code_key(wasm_hash);
+    let code_data = LedgerEntryData::ContractCode(stellar_xdr::ContractCodeEntry {
+        ext: stellar_xdr::ContractCodeEntryExt::V0,
+        hash: Hash(wasm_hash),
+        code: stellar_xdr::BytesM::try_from(vec![0u8; 32]).expect("bytes"),
+    });
+    let code_entry = serde_json::json!({
+        "key": code_k,
+        "xdr": code_data.to_xdr_base64(Limits::none()).expect("encode"),
+        "lastModifiedLedgerSeq": 4_500_000,
+        "liveUntilLedgerSeq": 4_566_959 + 900_000,
+    });
     let url2 = mock_rpc::MockRpc::from_fixtures(FIXTURES)
         .with_config_fixture(FIXTURES)
         .with_entry(k, e)
+        .with_entry(code_k, code_entry.to_string())
         .start()
         .await;
     let out2 = run(&[
@@ -274,10 +351,16 @@ async fn fail_on_critical_sets_exit_code() {
     assert_eq!(out2.status.code(), Some(0));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn restore_writes_unsigned_envelope_with_source_account() {
+    // The restore command fetches the source account's entry to compute the
+    // next sequence number; seed it in the mock.
     let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
         .with_config_fixture(FIXTURES)
+        .with_entry(
+            account_key(SOURCE_ACCOUNT),
+            account_entry_json(SOURCE_ACCOUNT, 42),
+        )
         .start()
         .await;
 
@@ -314,7 +397,7 @@ async fn restore_writes_unsigned_envelope_with_source_account() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn restore_writes_raw_operations_without_source_account() {
     let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
         .with_config_fixture(FIXTURES)
@@ -342,4 +425,3 @@ async fn restore_writes_raw_operations_without_source_account() {
         stellar_xdr::OperationBody::RestoreFootprint(_)
     ));
 }
-

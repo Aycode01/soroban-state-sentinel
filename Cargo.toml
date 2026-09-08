@@ -14,6 +14,7 @@ description = "Integration test harness for the soroban-state-sentinel workspace
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
 serde_json = "1"
 stellar-xdr.workspace = true
+stellar-strkey.workspace = true
 
 [workspace]
 resolver = "2"

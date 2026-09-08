@@ -1179,6 +1179,7 @@ name = "soroban-state-sentinel-tests"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "stellar-strkey 0.0.18",
  "stellar-xdr",
  "tokio",
 ]
