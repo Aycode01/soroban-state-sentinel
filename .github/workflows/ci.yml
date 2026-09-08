@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt · clippy · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the toolchain pinned in rust-toolchain.toml (stable, with
+      # rustfmt and clippy components per the pin).
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The integration tests spawn the compiled CLI binary, so it must be
+      # built before the test run.
+      - name: Build CLI
+        run: cargo build -p sentinel-cli
+
+      - name: Test
+        run: cargo test --workspace
