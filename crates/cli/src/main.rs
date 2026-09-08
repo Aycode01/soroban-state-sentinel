@@ -20,6 +20,7 @@ async fn main() {
     let cli = args::Cli::parse();
     let outcome = match &cli.command {
         args::Commands::Scan(cmd) => commands::scan::run(cmd).await,
+        args::Commands::Extend(cmd) => commands::extend::run(cmd).await,
         args::Commands::Restore(cmd) => commands::restore::run(cmd).await,
     };
 

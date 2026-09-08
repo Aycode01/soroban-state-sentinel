@@ -27,6 +27,8 @@ pub struct Cli {
 pub enum Commands {
     /// Scan a contract's ledger entries and classify TTL health.
     Scan(ScanArgs),
+    /// Build unsigned ExtendFootprintTtl XDR for entries approaching archival.
+    Extend(ExtendArgs),
     /// Build unsigned RestoreFootprint XDR for archived entries.
     Restore(RestoreArgs),
 }
@@ -100,6 +102,64 @@ pub struct ScanArgs {
     /// Output as a terminal table (default).
     #[arg(long, conflicts_with_all = ["json", "markdown"])]
     pub table: bool,
+
+    #[command(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ExtendArgs {
+    /// Contract id whose entries to extend (C… strkey).
+    pub contract_id: String,
+
+    /// Storage keys to extend, each a base64-XDR-encoded SCVal. Repeatable.
+    /// When omitted, the contract instance (+ its code, if discoverable) is extended.
+    #[arg(long = "keys", value_name = "SCVAL_BASE64")]
+    pub keys: Vec<String>,
+
+    /// Durability to assume for --keys entries.
+    #[arg(long, value_enum, default_value_t = DurabilityArg::Persistent)]
+    pub durability: DurabilityArg,
+
+    /// Ledgers to extend the entries' TTL by, measured from the current ledger
+    /// (the operation's extendTo; core sets liveUntil = current + extendTo).
+    #[arg(
+        long,
+        value_name = "LEDGERS",
+        required_unless_present = "extend_to_days",
+        conflicts_with = "extend_to_days"
+    )]
+    pub extend_to: Option<u32>,
+
+    /// Extend by this many days, resolved to ledgers via --ledger-close-seconds.
+    /// The close time is labeled default (5s target) vs explicit in the output.
+    #[arg(long, value_name = "DAYS", conflicts_with = "extend_to")]
+    pub extend_to_days: Option<u32>,
+
+    /// Output path for the unsigned XDR (writes base64).
+    #[arg(long, value_name = "FILE")]
+    pub output: String,
+
+    /// Public key (G…) of the account that will sign and submit. When given,
+    /// the output is a complete unsigned TransactionV1Envelope (account sequence
+    /// number fetched from the ledger). When omitted, the output is the raw
+    /// operations, one base64 per line.
+    #[arg(long)]
+    pub source_account: Option<String>,
+
+    /// Transaction fee override in stroops (otherwise estimated).
+    #[arg(long)]
+    pub fee: Option<u64>,
+
+    /// Account sequence number override (otherwise fetched from the ledger).
+    #[arg(long)]
+    pub sequence: Option<i64>,
+
+    /// Assumed size in bytes per archived entry whose live entry cannot be
+    /// fetched (footprint accounting and fee estimate only; core skips archived
+    /// entries at apply time and refunds the unused refundable fee).
+    #[arg(long, default_value_t = 1024)]
+    pub assumed_archived_entry_size: u32,
 
     #[command(flatten)]
     pub common: CommonArgs,
