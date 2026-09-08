@@ -1,0 +1,10 @@
+[package]
+name = "sentinel-rent-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Canonical port of the Soroban rent-fee computation (soroban-env-host v28.0.0 fees.rs) with stroop projections for extend/restore."
+
+[dependencies]
+thiserror.workspace = true

@@ -1,0 +1,25 @@
+[package]
+name = "sentinel-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "soroban-state-sentinel CLI: scan contracts for TTL/archival risk and produce unsigned remediation XDR."
+
+[[bin]]
+name = "soroban-state-sentinel"
+path = "src/main.rs"
+
+[dependencies]
+sentinel-rpc-client = { path = "../rpc-client" }
+sentinel-ttl-scanner = { path = "../ttl-scanner" }
+sentinel-rent-model = { path = "../rent-model" }
+sentinel-xdr-builder = { path = "../xdr-builder" }
+stellar-xdr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+clap.workspace = true
+comfy-table.workspace = true

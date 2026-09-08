@@ -1,0 +1,6 @@
+# Pin the stable toolchain for all contributors and CI. The rent model and XDR
+# code target protocol 28 (stellar-xdr 28.x) which requires Rust >= 1.84.
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

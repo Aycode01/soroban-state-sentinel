@@ -1,0 +1,13 @@
+[package]
+name = "sentinel-ttl-scanner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ledgers-remaining computation and health-band classification for Soroban ledger entries."
+
+[dependencies]
+sentinel-rpc-client = { path = "../rpc-client" }
+sentinel-xdr-builder = { path = "../xdr-builder" }
+stellar-xdr.workspace = true
+thiserror.workspace = true

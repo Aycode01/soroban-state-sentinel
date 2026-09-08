@@ -1,0 +1,54 @@
+[package]
+name = "soroban-state-sentinel-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Integration test harness for the soroban-state-sentinel workspace."
+
+# The root package owns the repo-level integration tests (tests/). It has no
+# library or binary of its own; the tests spawn the compiled CLI binary and talk
+# to a local mock RPC server.
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
+serde_json = "1"
+stellar-xdr.workspace = true
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/rpc-client",
+    "crates/ttl-scanner",
+    "crates/rent-model",
+    "crates/xdr-builder",
+    "crates/cli",
+]
+
+exclude = ["crates/rpc-client/examples"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "Apache-2.0"
+repository = "https://github.com/stellar-archival-labs/soroban-state-sentinel"
+authors = ["StellarArchivalLabs"]
+description = "Monitors deployed Soroban contracts for TTL/state-archival risk and generates the unsigned remediation transactions to fix it."
+
+[workspace.dependencies]
+# Protocol-28 XDR. The `base64` feature adds `ReadXdr::from_xdr_base64` /
+# `WriteXdr::to_xdr_base64`, which the RPC client uses to talk to Soroban RPC.
+stellar-xdr = { version = "28.0.0", features = ["std", "base64"] }
+stellar-strkey = "0.0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+clap = { version = "4", features = ["derive"] }
+comfy-table = "7"
+sha2 = "0.10"
+
+[profile.release]
+lto = "thin"
