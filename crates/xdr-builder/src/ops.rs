@@ -7,6 +7,22 @@
 //!   `RestoreFootprint` in the **read-write** footprint.
 //! - `extendTo` must be ≤ `max_entry_ttl - 1`.
 //! - Only contract-data / contract-code keys are valid for either operation.
+//!
+//! ## `extendTo` semantics (verified, protocol 28)
+//!
+//! `ExtendFootprintTTLOp.extendTo` is a **duration in ledgers measured from the
+//! current ledger**, not an absolute target ledger sequence. Stellar Core's
+//! `src/transactions/ExtendFootprintTTLOpFrame.cpp` (master, protocol 28 era)
+//! applies it as:
+//!
+//! ```cpp
+//! // Extend for `extendTo` more ledgers since the current ledger.
+//! uint32_t newLiveUntilLedgerSeq = getLedgerSeq() + extendTo;
+//! ```
+//!
+//! and rejects `extendTo > maxEntryTTL - 1` as malformed in
+//! `doCheckValidForSoroban`. Callers must validate via [`validate_extend_to`]
+//! against the live network's `max_entry_ttl`.
 
 use stellar_xdr::{
     ExtendFootprintTtlOp, ExtensionPoint, LedgerKey, Operation, OperationBody, RestoreFootprintOp,
@@ -193,9 +209,10 @@ fn batch_entries(
 /// Build `ExtendFootprintTtl` operations for the given entries, split across
 /// operations so each stays within the network's footprint limits.
 ///
-/// `extend_to` is a target extension in ledgers from the current ledger (the
-/// operation's `extendTo` field). The caller is responsible for validating it
-/// against the network's `max_entry_ttl - 1` (or call
+/// `extend_to` is a duration in ledgers measured from the current ledger (the
+/// operation's `extendTo` field; core computes
+/// `liveUntilLedgerSeq = current + extendTo`). The caller is responsible for
+/// validating it against the network's `max_entry_ttl - 1` (or call
 /// [`validate_extend_to`]).
 pub fn build_extend_ttl_ops(
     entries: &[KeyEntry],

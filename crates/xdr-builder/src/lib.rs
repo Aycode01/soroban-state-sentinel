@@ -24,6 +24,6 @@ pub mod ttl;
 
 pub use envelope::{build_unsigned_envelope, unsigned_envelope_xdr_base64};
 pub use error::BuildError;
-pub use ops::{build_extend_ttl_ops, build_restore_ops, BatchLimits, KeyEntry};
+pub use ops::{build_extend_ttl_ops, build_restore_ops, validate_extend_to, BatchLimits, KeyEntry};
 pub use strkey::{decode_account_id, decode_contract_id, decode_muxed_account};
 pub use ttl::ttl_key_for;
