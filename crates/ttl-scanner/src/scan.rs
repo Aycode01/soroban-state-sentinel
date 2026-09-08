@@ -28,7 +28,6 @@ use stellar_xdr::{
 
 /// Sentinel value used by Soroban RPC for "no live-until info": an entry with
 /// `liveUntilLedgerSeq == 0` has no associated live TTL (archived or non-TTL).
-
 use crate::health::{classify, HealthBand, HealthConfig};
 
 /// Default average ledger close time in seconds.
@@ -251,7 +250,8 @@ fn build_row(
 
     let estimated_archive_unix = ledgers_remaining.and_then(|ledgers| {
         close_time.checked_add(u64::from(ledgers).saturating_mul(ledger_close_seconds))
-    });    let size_bytes = entry.as_ref().map(xdr_entry_size);
+    });
+    let size_bytes = entry.as_ref().map(xdr_entry_size);
     let is_code_entry = matches!(entry.as_ref(), Some(LedgerEntryData::ContractCode(_)));
 
     ScannedEntry {
@@ -320,7 +320,7 @@ impl ScanOptions {
         }
 
         let resp1 = rpc.get_ledger_entries(&keys).await?;
-        let index = index_entries(&resp1);
+        let mut index = index_entries(&resp1);
 
         let mut entries_out: Vec<ScannedEntry> = Vec::new();
 
@@ -347,11 +347,18 @@ impl ScanOptions {
         ));
 
         // --- code row (only if instance was readable and is wasm) ---
+        // The wasm hash is only known *after* the instance entry comes back, so
+        // the code entry needs its own fetch round (round 2). Looking it up in
+        // the round-1 response would always report it as archived.
         let wasm_hash = instance_entry
             .as_ref()
             .and_then(|e| wasm_hash_from_instance(e).ok().flatten());
         if let Some(hash) = wasm_hash {
             let code_key = LedgerKey::ContractCode(LedgerKeyContractCode { hash });
+            let code_resp = rpc
+                .get_ledger_entries(std::slice::from_ref(&code_key))
+                .await?;
+            index.extend(index_entries(&code_resp));
             let code_ttl_key = ttl_key_for(&code_key)?;
             let code_info = index.get(&code_key).cloned();
             let code_entry = code_info.as_ref().map(|i| i.entry.clone());
