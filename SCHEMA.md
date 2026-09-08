@@ -10,8 +10,11 @@ bump below, coordinated with consumers — never a silent reshape.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. With `--fail-on-critical`: no entry is in the `critical` or `archived` band. |
-| `1` | `--fail-on-critical` set **and** at least one entry is `critical` or `archived`. |
+| `1` | `--fail-on-critical` set **and** at least one entry is `critical` or `archived`. Only `scan` ever sets this. |
 | `2` | Usage or operational error: bad arguments, invalid strkey/SCVal, RPC failure, XDR build/serialization failure, I/O failure. |
+
+`extend` and `restore` never set exit `1`; their outcomes are `0` (success) or
+`2` (error).
 
 `--fail-on-critical` is the automation hook: a watcher runs
 `soroban-state-sentinel scan <id> --fail-on-critical --json`, and exit code `1`
@@ -21,8 +24,15 @@ means "action required now". The band that triggers it is exactly
 
 ## JSON schema — `scan --json`
 
-Current version: **`1.0.0`** (constant `SCHEMA_VERSION` in
+Current version: **`1.1.0`** (constant `SCHEMA_VERSION` in
 `crates/cli/src/output/json.rs`).
+
+Version history:
+
+- **`1.1.0`** (additive) — documents the `extend` subcommand's contract. The
+  `scan` JSON document shape is **unchanged** from `1.0.0`; existing consumers
+  need no migration.
+- **`1.0.0`** — initial contract: `scan --json` document + exit codes.
 
 Top-level document (all field names `snake_case`):
 
@@ -113,12 +123,21 @@ Top-level document (all field names `snake_case`):
 `--markdown` and `--table` are human-oriented and **not** part of this
 contract; they may change freely.
 
-## `restore` output
+## `extend` / `restore` output
 
-`restore` writes a file, not stdout JSON, and is not consumed by
-`action-state-watch`; its file format is therefore not versioned here:
+`extend` and `restore` write a file, not stdout JSON, and are not consumed by
+`action-state-watch`; their file formats are therefore not versioned here. Both
+follow identical conventions:
 
-- Without `--source-account`: base64-XDR `RestoreFootprint` operations, one per
-  line.
+- Without `--source-account`: base64-XDR operations (`ExtendFootprintTtl` for
+  `extend`, `RestoreFootprint` for `restore`), one per line.
 - With `--source-account`: a single base64-XDR `TransactionV1Envelope` with
   empty `signatures`.
+
+`extend --extend-to <LEDGERS>` is a **duration in ledgers from the current
+ledger** (core applies `liveUntilLedgerSeq = currentLedger + extendTo`), not an
+absolute target ledger sequence; the tool validates it against the live
+network's `max_entry_ttl - 1` before writing anything and rejects `0` as a
+no-op. `--extend-to-days <N>` resolves days to ledgers with the same
+close-time logic `scan` uses and labels the close time `default` vs `explicit`
+in its console output.

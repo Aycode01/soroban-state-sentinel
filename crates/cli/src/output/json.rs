@@ -11,7 +11,10 @@ use crate::commands::scan::{EntryProjection, ScanReport};
 use crate::context::FeeSource;
 
 /// Current schema version. Bump (breaking) or extend (non-breaking) per SCHEMA.md.
-pub const SCHEMA_VERSION: &str = "1.0.0";
+///
+/// v1.1.0 (additive): documents the `extend` subcommand's contract; the scan
+/// JSON document shape is unchanged from v1.0.0.
+pub const SCHEMA_VERSION: &str = "1.1.0";
 
 /// Top-level scan document (schema v1).
 #[derive(Debug, Serialize)]

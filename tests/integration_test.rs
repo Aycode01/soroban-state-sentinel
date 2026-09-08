@@ -181,7 +181,7 @@ async fn scan_reports_archived_docs_counter_contract() {
     assert!(out.status.success(), "scan failed: {}", stderr_of(&out));
     let doc = json_of(&out);
 
-    assert_eq!(doc["schema_version"], "1.0.0");
+    assert_eq!(doc["schema_version"], "1.1.0");
     assert_eq!(doc["network"]["protocol_version"], 28);
     assert_eq!(doc["summary"]["entries_scanned"], 1);
     assert_eq!(doc["summary"]["archived"], 1);

@@ -88,6 +88,37 @@ latest ledger 4566959 · ledger close 5s (default assumption) · fee_per_rent_1k
 summary: 0 healthy · 0 expiring_soon · 1 critical · 0 archived · has_critical=true
 ```
 
+### Extend (unsigned XDR)
+
+The proactive remedy for entries in the `expiring_soon` / `critical` bands,
+*before* they archive:
+
+```bash
+soroban-state-sentinel extend <contract-id> \
+  [--keys <SCVAL_BASE64> ...] \
+  --extend-to <LEDGERS> \
+  --output unsigned.xdr \
+  [--source-account G…] \
+  [--fee <stroops>] [--sequence <n>]
+```
+
+`--extend-to <LEDGERS>` is the number of ledgers to extend the entries' TTL
+**by, measured from the current ledger** — the operation's `extendTo` field.
+Stellar Core applies `liveUntilLedgerSeq = currentLedger + extendTo` (verified
+against `ExtendFootprintTTLOpFrame.cpp`), so this is a duration, not an
+absolute target ledger sequence. It must be at most `max_entry_ttl - 1`; the
+tool validates it against the live network config before writing anything, and
+rejects `0` as a no-op.
+
+`--extend-to-days <N>` is a convenience form: N days are resolved to ledgers
+using the same close-time logic `scan` uses, and the output labels the close
+time as `default` (the 5s target) or `explicit` — never a silent assumption.
+
+Output follows the `restore` conventions exactly: without `--source-account`
+it writes the raw `ExtendFootprintTtl` operations, one base64-XDR per line;
+with `--source-account` it writes a complete unsigned `TransactionV1Envelope`.
+Exit codes `0` (success) and `2` (error) — `extend` never sets exit `1`.
+
 ### Restore (unsigned XDR)
 
 ```bash
@@ -139,11 +170,11 @@ Five crates, each with one job:
   expose. The CLI resolves it with explicit precedence —
   `--rent-fee-per-1kb` → `--average-state-size-bytes` → the state-size-high
   plateau — and always labels which path was taken.
-- **Archived entry sizes are assumed.** For `restore`, the live size of an
-  archived entry is unreadable over RPC; the fee estimate uses
-  `--assumed-archived-entry-size` (default 1024 B). Core charges the actual
-  rent at apply time and refunds the unused refundable fee, so a conservative
-  estimate is safe.
+- **Archived entry sizes are assumed.** For `restore` (and for archived keys
+  inside an `extend` footprint), the live size of an archived entry is
+  unreadable over RPC; the estimate uses `--assumed-archived-entry-size`
+  (default 1024 B). Core charges the actual rent at apply time and refunds the
+  unused refundable fee, so a conservative estimate is safe.
 - **Ledger close time.** RPC does not expose the network's *actual* average
   ledger close time; the 5-second target is the default and is always labeled
   `default` vs `explicit` in the output. Pass `--ledger-close-seconds` when you
