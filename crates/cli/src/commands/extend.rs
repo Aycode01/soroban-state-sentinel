@@ -339,3 +339,70 @@ pub async fn run(cmd: &ExtendArgs) -> Result<Outcome, CliError> {
 
     Ok(Outcome::Ok)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extend_to_passes_through_unchanged() {
+        let resolved = resolve_extend_to(Some(100_000), None, 5).expect("resolve");
+        assert_eq!(resolved.extend_to, 100_000);
+        assert_eq!(resolved.source, ExtendTargetSource::Ledgers);
+        assert_eq!(resolved.ledger_close_seconds, None);
+        // The close time must not influence the direct ledgers path.
+        let with_other_close = resolve_extend_to(Some(100_000), None, 7).expect("resolve");
+        assert_eq!(with_other_close.extend_to, 100_000);
+    }
+
+    #[test]
+    fn days_resolve_to_ledgers_at_default_close_time() {
+        // 30 days at 5s/ledger = 2_592_000 / 5 = 518_400 ledgers.
+        let resolved = resolve_extend_to(None, Some(30), 5).expect("resolve");
+        assert_eq!(resolved.extend_to, 30 * 86_400 / 5);
+        assert_eq!(resolved.source, ExtendTargetSource::Days);
+        assert_eq!(resolved.ledger_close_seconds, Some(5));
+    }
+
+    #[test]
+    fn days_resolve_with_explicit_close_time() {
+        // 30 days at 7s/ledger = ceil(2_592_000 / 7) = 370_286 ledgers.
+        let resolved = resolve_extend_to(None, Some(30), 7).expect("resolve");
+        assert_eq!(resolved.extend_to, 370_286);
+        assert_eq!(resolved.ledger_close_seconds, Some(7));
+    }
+
+    #[test]
+    fn close_time_source_labels_default_vs_explicit() {
+        assert_eq!(close_time_source(DEFAULT_LEDGER_CLOSE_SECONDS), "default");
+        assert_eq!(close_time_source(5), "default");
+        assert_eq!(close_time_source(7), "explicit");
+        assert_eq!(close_time_source(4), "explicit");
+    }
+
+    #[test]
+    fn zero_days_is_rejected() {
+        let err = resolve_extend_to(None, Some(0), 5).expect_err("must fail");
+        assert!(err.to_string().contains("--extend-to-days must be > 0"));
+    }
+
+    #[test]
+    fn zero_close_time_is_rejected() {
+        let err = resolve_extend_to(None, Some(30), 0).expect_err("must fail");
+        assert!(err
+            .to_string()
+            .contains("--ledger-close-seconds must be > 0"));
+    }
+
+    #[test]
+    fn overflowing_days_are_rejected() {
+        let err = resolve_extend_to(None, Some(u32::MAX), 5).expect_err("must fail");
+        assert!(err.to_string().contains("exceeds u32::MAX ledgers"));
+    }
+
+    #[test]
+    fn exactly_one_source_is_required() {
+        assert!(resolve_extend_to(None, None, 5).is_err());
+        assert!(resolve_extend_to(Some(100), Some(30), 5).is_err());
+    }
+}
