@@ -258,7 +258,7 @@ mod tests {
     use super::*;
     use stellar_xdr::{
         AccountId, ContractDataDurability, ContractId, Hash, LedgerKeyAccount,
-        LedgerKeyContractData, PublicKey, ScAddress, ScVal, Uint256,
+        LedgerKeyContractData, Limits, PublicKey, ReadXdr, ScAddress, ScVal, Uint256, WriteXdr,
     };
 
     fn data_key(i: u8) -> KeyEntry {
@@ -291,6 +291,27 @@ mod tests {
                 assert!(matches!(inner.ext, ExtensionPoint::V0));
             }
             other => panic!("unexpected body: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn extend_op_xdr_round_trips() {
+        // Build, serialize to base64 (the CLI's output format), parse back, and
+        // assert the operation survives unchanged.
+        let entries: Vec<KeyEntry> = (0..2).map(data_key).collect();
+        let ops = build_extend_ttl_ops(&entries, 518_400, &limits(100, u32::MAX, u32::MAX))
+            .expect("build");
+        assert_eq!(ops.len(), 1, "both entries fit in one operation");
+
+        let b64 = ops[0].to_xdr_base64(Limits::none()).expect("encode");
+        let back = Operation::from_xdr_base64(&b64, Limits::none()).expect("decode");
+        assert_eq!(ops[0], back, "round-trip must preserve the operation");
+        match back.body {
+            OperationBody::ExtendFootprintTtl(inner) => {
+                assert_eq!(inner.extend_to, 518_400);
+                assert!(matches!(inner.ext, ExtensionPoint::V0));
+            }
+            other => panic!("unexpected body after round-trip: {other:?}"),
         }
     }
 
