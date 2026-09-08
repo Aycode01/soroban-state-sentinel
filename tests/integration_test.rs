@@ -352,6 +352,181 @@ async fn fail_on_critical_sets_exit_code() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn extend_writes_valid_unsigned_ops_and_labels_close_time() {
+    // Live instance + code under the decoded contract id (the code entry is
+    // discovered from the instance's wasm hash and fetched in round 2).
+    let wasm_hash = [0x44u8; 32];
+    let (instance_k, instance_e) = instance_entry_json(
+        contract_bytes(COUNTER_CONTRACT),
+        wasm_hash,
+        4_566_959 + 900_000,
+    );
+    let code_k = code_key(wasm_hash);
+    let code_data = LedgerEntryData::ContractCode(stellar_xdr::ContractCodeEntry {
+        ext: stellar_xdr::ContractCodeEntryExt::V0,
+        hash: Hash(wasm_hash),
+        code: stellar_xdr::BytesM::try_from(vec![0u8; 32]).expect("bytes"),
+    });
+    let code_e = serde_json::json!({
+        "key": code_k,
+        "xdr": code_data.to_xdr_base64(Limits::none()).expect("encode"),
+        "lastModifiedLedgerSeq": 4_500_000,
+        "liveUntilLedgerSeq": 4_566_959 + 900_000,
+    })
+    .to_string();
+    let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
+        .with_config_fixture(FIXTURES)
+        .with_entry(instance_k, instance_e)
+        .with_entry(code_k, code_e)
+        .start()
+        .await;
+
+    let out_path = std::env::temp_dir().join("sentinel_extend_ops.xdr");
+    let out = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--extend-to",
+        "100000",
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "extend failed: {}", stderr_of(&out));
+
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("extend target: 100000 ledgers from the current ledger"),
+        "unexpected stdout: {stdout}"
+    );
+
+    let content = std::fs::read_to_string(&out_path).expect("read output");
+    let ops: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    assert!(!ops.is_empty(), "expected at least one operation");
+    for line in ops {
+        let op = stellar_xdr::Operation::from_xdr_base64(line, Limits::none())
+            .expect("operation XDR parses");
+        match op.body {
+            stellar_xdr::OperationBody::ExtendFootprintTtl(inner) => {
+                assert_eq!(inner.extend_to, 100_000)
+            }
+            other => panic!("expected ExtendFootprintTtl, got {other:?}"),
+        }
+    }
+
+    // --extend-to-days reuses the scan close-time labeling: default at 5s,
+    // explicit otherwise, and both must resolve to the same ledgers.
+    let out_days = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--extend-to-days",
+        "30",
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert!(
+        out_days.status.success(),
+        "extend --extend-to-days failed: {}",
+        stderr_of(&out_days)
+    );
+    let stdout_days = stdout_of(&out_days);
+    assert!(
+        stdout_days.contains("close-time source: default"),
+        "expected default close-time label, got: {stdout_days}"
+    );
+    assert!(
+        stdout_days.contains("518400 ledgers"),
+        "30 days at 5s/ledger must resolve to 518400 ledgers, got: {stdout_days}"
+    );
+
+    let out_explicit = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--extend-to-days",
+        "30",
+        "--ledger-close-seconds",
+        "7",
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert!(
+        out_explicit.status.success(),
+        "extend --extend-to-days failed: {}",
+        stderr_of(&out_explicit)
+    );
+    assert!(
+        stdout_of(&out_explicit).contains("close-time source: explicit"),
+        "expected explicit close-time label"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn extend_rejects_targets_past_network_max() {
+    let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)
+        .with_config_fixture(FIXTURES)
+        .start()
+        .await;
+
+    let out_path = std::env::temp_dir().join("sentinel_extend_invalid.xdr");
+    let _ = std::fs::remove_file(&out_path);
+
+    // Beyond max_entry_ttl - 1: core rejects the op as malformed.
+    let out = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--extend-to",
+        "999999999",
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("extend_to 999999999"),
+        "unexpected error: {err}"
+    );
+
+    // Zero: a meaningless extension.
+    let out0 = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--extend-to",
+        "0",
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert_eq!(out0.status.code(), Some(2));
+    assert!(
+        stderr_of(&out0).contains("extend_to 0"),
+        "unexpected error: {}",
+        stderr_of(&out0)
+    );
+
+    // Neither flag: clap rejects the invocation.
+    let out_neither = run(&[
+        "extend",
+        COUNTER_CONTRACT,
+        "--rpc-url",
+        &url,
+        "--output",
+        out_path.to_str().unwrap(),
+    ]);
+    assert_eq!(out_neither.status.code(), Some(2));
+    assert!(stderr_of(&out_neither).contains("--extend-to"));
+
+    // No invalid run may have written XDR.
+    assert!(!out_path.exists(), "invalid run must not write output");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn restore_writes_unsigned_envelope_with_source_account() {
     // The restore command fetches the source account's entry to compute the
     // next sequence number; seed it in the mock.
