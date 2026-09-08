@@ -5,6 +5,11 @@ consumers. **`action-state-watch` parses `scan --json` and depends on the
 `--fail-on-critical` exit code.** Breaking changes to either require a version
 bump below, coordinated with consumers — never a silent reshape.
 
+**Binary name.** Consumers shell out to `soroban-state-sentinel` (the explicit
+`[[bin]]` name in `crates/cli/Cargo.toml`); the crate is `sentinel-cli`. The
+invocation name is part of this contract and will not change without a major
+version bump here.
+
 ## Exit codes (all subcommands)
 
 | Code | Meaning |

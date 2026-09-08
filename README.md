@@ -14,6 +14,17 @@ into health bands, with an exact stroop cost to extend or restore each one.
 > process signs and submits. There is deliberately **no signing capability
 > anywhere in this repository** — see [SECURITY.md](SECURITY.md).
 
+## Binary name
+
+- The installed binary is **`soroban-state-sentinel`** — this is the exact
+  name to shell out to (e.g. from `action-state-watch`). It is set explicitly
+  in the `[[bin]]` section of `crates/cli/Cargo.toml` and matches the clap
+  command name, the usage examples below, and the integration tests — not an
+  accidental default.
+- The **crate** is `sentinel-cli` at `crates/cli/`, named after the sibling
+  crates (`sentinel-rpc-client`, `sentinel-ttl-scanner`, `sentinel-rent-model`,
+  `sentinel-xdr-builder`). Build it with `cargo build -p sentinel-cli`.
+
 ## Features
 
 - **Scan** a contract's ledger entries (instance + code + explicit storage keys)
