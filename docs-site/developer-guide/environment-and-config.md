@@ -1,80 +1,45 @@
-# Environment and configuration
+# Environment & Configuration
 
-## Environment variables
+`soroban-state-sentinel` is configured via command-line flags defined globally or per subcommand.
 
-There are **none**. The tool reads no environment variables anywhere in the
-codebase (`std::env` is unused outside tests). Every knob is a CLI flag with an
-explicit default or an explicit requirement. This is deliberate: a monitoring
-tool's behavior should be visible in its invocation, not hidden in the
-environment.
+## Global Configuration Flags
 
-## Configuration flags
+Global flags apply to `scan`, `extend`, and `restore`.
 
-### Global flags (all subcommands)
+| Flag Name | Value Type | Default Value | Example Value | Behavior When Omitted |
+| --- | --- | --- | --- | --- |
+| `--rpc-url` | `String` | `https://soroban-testnet.stellar.org` | `https://mainnet.stellar.org` | Queries public testnet RPC endpoint. |
+| `--ledger-close-seconds` | `u64` | `5` | `6` | Assumes target 5s close time; output labels source as `"default"`. When supplied, output labels source as `"explicit"`. |
+| `--average-state-size-bytes` | `i64` | `None` | `50000000` | Uses maximum state size plateau rate (`rent_fee_1kb_state_size_high`) for rent calculations. |
+| `--rent-fee-per-1kb` | `i64` | `None` | `10000` | Overrides `--average-state-size-bytes` and plateau default with explicit rate. |
+| `--ttl-entry-size` | `u32` | `48` | `48` | Uses protocol default 48 bytes for `LedgerKey::Ttl` size calculations. |
 
-These are `global = true` in the `clap` definitions (`crates/cli/src/args.rs`),
-so they can appear before or after the subcommand.
+## Subcommand Flags
 
-| Flag | Example | Omitted behavior |
-| --- | --- | --- |
-| `--rpc-url <URL>` | `--rpc-url https://soroban-testnet.stellar.org` | Defaults to the public testnet (`DEFAULT_RPC_URL` in `args.rs`). |
-| `--ledger-close-seconds <N>` | `--ledger-close-seconds 7` | Defaults to `5` (the Stellar target). The output labels the value `default` vs `explicit`, so the assumption is never silent. |
-| `--average-state-size-bytes <N>` | `--average-state-size-bytes 3000000000` | When absent, `fee_per_rent_1kb` falls back to the state-size-high plateau; the output labels the path `state_size_high`. |
-| `--rent-fee-per-1kb <N>` | `--rent-fee-per-1kb 10000` | When absent, resolution proceeds to `--average-state-size-bytes`, then the plateau. Overrides both when present (`explicit`). |
-| `--ttl-entry-size <N>` | `--ttl-entry-size 48` | Defaults to `48` (the protocol constant from `soroban-env-host`, overridable). |
+### `scan` Specific Flags
 
-`fee_per_rent_1kb` resolution precedence: `--rent-fee-per-1kb` →
-`--average-state-size-bytes` → state-size-high plateau. See
-[Economics of rent](../economics-of-rent.md) for why this limitation exists.
+| Flag Name | Value Type | Default Value | Behavior When Omitted |
+| --- | --- | --- | --- |
+| `--healthy-days` | `u32` | `30` | Healthy band threshold is set to 30 days. |
+| `--critical-days` | `u32` | `7` | Critical band threshold is set to 7 days. |
+| `--extend-horizon-ledgers` | `u32` | `healthy_min_ledgers` | Sets cost projection horizon to `--healthy-days` equivalent. |
+| `--fail-on-critical` | `bool` | `false` | Exits code 0 regardless of health bands. |
+| `--json` | `bool` | `false` | Outputs human-readable terminal table. |
 
-### `scan`
+### `extend` Specific Flags
 
-| Flag | Example | Omitted behavior |
-| --- | --- | --- |
-| `contract_id` (positional) | `CCJQB4…MXIEX` | Required; clap exits 2 without it. |
-| `--keys <SCVAL_BASE64>` | `--keys AAAAAQAAAAA…` (repeatable) | No explicit keys: scan covers the contract instance + code (discovered from the instance's wasm hash). |
-| `--durability <persistent\|temporary>` | `--durability temporary` | Defaults to `persistent`. Only affects `--keys` entries. |
-| `--healthy-days <N>` | `--healthy-days 60` | Defaults to `30`. |
-| `--critical-days <N>` | `--critical-days 3` | Defaults to `7`. |
-| `--extend-horizon-ledgers <N>` | `--extend-horizon-ledgers 1000000` | Defaults to the healthy threshold in ledgers (518,400 at defaults). |
-| `--fail-on-critical` | flag | Off. When set, exit 1 if any entry is `critical` or `archived`. |
-| `--json` / `--markdown` / `--table` | flag | Default output is the terminal table. The three are mutually exclusive. |
+| Flag Name | Value Type | Default Value | Behavior When Omitted |
+| --- | --- | --- | --- |
+| `--extend-to` | `u32` | Required unless `--extend-to-days` | Must specify extension target. |
+| `--extend-to-days` | `u32` | Required unless `--extend-to` | Converts days to ledgers using `--ledger-close-seconds`. |
+| `--output` | `String` | Required | Writes XDR output to target file path. |
+| `--source-account` | `String` | `None` | Writes raw base64 operations (one per line). When given, writes complete `TransactionV1Envelope`. |
+| `--assumed-archived-entry-size` | `u32` | `1024` | Uses 1024 bytes for unreadable archived entry fee estimates. |
 
-### `extend`
+### `restore` Specific Flags
 
-| Flag | Example | Omitted behavior |
-| --- | --- | --- |
-| `contract_id` (positional) | `CCJQB4…MXIEX` | Required. |
-| `--extend-to <LEDGERS>` | `--extend-to 518400` | Required unless `--extend-to-days` is given. Conflicts with `--extend-to-days`. |
-| `--extend-to-days <DAYS>` | `--extend-to-days 30` | Conflicts with `--extend-to`. Resolved to ledgers via the ledger close time; output labels it `default` vs `explicit`. |
-| `--output <FILE>` | `--output /tmp/extend.xdr` | Required; clap exits 2 without it. |
-| `--keys <SCVAL_BASE64>` | repeatable | When omitted, the instance (+ code, if discoverable) is extended. |
-| `--source-account <G…>` | `--source-account GDM2X…ZPC5` | Omitted: raw operations, one base64 per line. Given: a complete unsigned `TransactionV1Envelope`. |
-| `--fee <stroops>` | `--fee 1000000` | Omitted: fee estimated from base + resource + rent components. |
-| `--sequence <N>` | `--sequence 19614875122663425` | Omitted: next sequence fetched from the ledger. |
-| `--assumed-archived-entry-size <N>` | `--assumed-archived-entry-size 2048` | Defaults to `1024`. |
-
-### `restore`
-
-| Flag | Example | Omitted behavior |
-| --- | --- | --- |
-| `contract_id` (positional) | `CCPYZF…FNCI` | Required. |
-| `--output <FILE>` | `--output /tmp/restore.xdr` | Required. |
-| `--keys <SCVAL_BASE64>` | repeatable | When omitted, the instance (+ code, if discoverable) is restored. |
-| `--source-account <G…>` | `--source-account GDM2X…ZPC5` | Omitted: raw operations, one base64 per line. Given: a complete unsigned `TransactionV1Envelope`. |
-| `--fee <stroops>` | `--fee 1000000` | Omitted: fee estimated. |
-| `--sequence <N>` | `--sequence 19614875122663425` | Omitted: next sequence fetched from the ledger. |
-| `--assumed-archived-entry-size <N>` | `--assumed-archived-entry-size 2048` | Defaults to `1024`. |
-
-## What the tool reads from the network instead
-
-Values that are not CLI inputs come from the live network on every run: the
-network passphrase and protocol version (`getNetwork`), the latest ledger
-(`getLatestLedger`), and the fee/TTL config settings (`getLedgerEntries` on the
-`CONFIG_SETTING` keys — `ContractLedgerCostV0`, `ContractLedgerCostExtV0`,
-`StateArchival`, `ContractComputeV0`, `ContractHistoricalDataV0`,
-`ContractEventsV0`, `ContractBandwidthV0`). On the protocol-28 testnet these
-included `max_entry_ttl` 3,110,400, `min_persistent_ttl` 120,960,
-`min_temporary_ttl` 720, `fee_write_ledger_entry` 2,500, and
-`fee_write_1kb` 875. Nothing here is hardcoded; every assumption the tool does
-make is labeled in its output.
+| Flag Name | Value Type | Default Value | Behavior When Omitted |
+| --- | --- | --- | --- |
+| `--output` | `String` | Required | Writes XDR output to target file path. |
+| `--source-account` | `String` | `None` | Writes raw base64 operations. When given, writes complete `TransactionV1Envelope`. |
+| `--assumed-archived-entry-size` | `u32` | `1024` | Uses 1024 bytes for unreadable archived entry fee estimates. |
