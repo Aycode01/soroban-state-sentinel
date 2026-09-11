@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0D12"/>
+      <stop offset="50%" stop-color="#111318"/>
+      <stop offset="100%" stop-color="#0D1117"/>
+    </linearGradient>
+
+    <!-- Blue to Teal Shield Gradient -->
+    <linearGradient id="primary-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+
+    <!-- Glow Effect -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    
+    <filter id="subtle-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <!-- Circuit / Grid Pattern -->
+    <pattern id="circuit-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.75" stroke-opacity="0.35"/>
+      <circle cx="40" cy="0" r="1.5" fill="#334155" fill-opacity="0.4"/>
+    </pattern>
+
+    <!-- Shield Pattern Fill (subtle diagonal lines inside shield) -->
+    <pattern id="shield-lines" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="12" stroke="#2DD4BF" stroke-width="1" stroke-opacity="0.15"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" rx="24" fill="url(#bg-gradient)"/>
+  <rect width="1280" height="640" rx="24" fill="url(#circuit-grid)"/>
+
+  <!-- Border Frame Accent -->
+  <rect width="1276" height="636" x="2" y="2" rx="23" fill="none" stroke="url(#primary-gradient)" stroke-width="1.5" stroke-opacity="0.4"/>
+
+  <!-- Ambient Backdrop Glows -->
+  <circle cx="280" cy="320" r="220" fill="#3B82F6" fill-opacity="0.08" filter="url(#glow)"/>
+  <circle cx="1000" cy="320" r="200" fill="#2DD4BF" fill-opacity="0.07" filter="url(#glow)"/>
+
+  <!-- Circuit Line Details in Background -->
+  <g stroke="#38BDF8" stroke-opacity="0.15" stroke-width="1.5" fill="none">
+    <path d="M 120 180 H 320 L 360 220 H 480"/>
+    <circle cx="120" cy="180" r="4" fill="#38BDF8" fill-opacity="0.3"/>
+    <path d="M 800 480 H 960 L 1000 440 H 1160"/>
+    <circle cx="1160" cy="440" r="4" fill="#2DD4BF" fill-opacity="0.3"/>
+  </g>
+
+  <!-- Left/Centered Shield Emblem Graphic -->
+  <g transform="translate(140, 180)">
+    <!-- Outer Shield Glow -->
+    <polygon points="140,20 250,60 250,190 140,270 30,190 30,60" fill="none" stroke="url(#primary-gradient)" stroke-width="3" stroke-opacity="0.3" filter="url(#glow)"/>
+
+    <!-- Outer Shield Outline -->
+    <polygon points="140,20 250,60 250,190 140,270 30,190 30,60" fill="#111827" stroke="url(#primary-gradient)" stroke-width="3.5"/>
+
+    <!-- Inner Shield Pattern & Fill -->
+    <polygon points="140,36 234,70 234,180 140,250 46,180 46,70" fill="url(#shield-lines)"/>
+    <polygon points="140,36 234,70 234,180 140,250 46,180 46,70" fill="#0F172A" fill-opacity="0.6" stroke="url(#primary-gradient)" stroke-width="1" stroke-opacity="0.5"/>
+
+    <!-- Sentinel Core Hexagon / Eye Motif -->
+    <polygon points="140,85 185,110 185,160 140,185 95,160 95,110" fill="#1E293B" stroke="url(#primary-gradient)" stroke-width="2.5"/>
+    <circle cx="140" cy="135" r="24" fill="url(#primary-gradient)" filter="url(#subtle-glow)"/>
+    <circle cx="140" cy="135" r="10" fill="#0B0D12"/>
+    <circle cx="140" cy="135" r="4" fill="#2DD4BF"/>
+
+    <!-- Decorative Corner Nodes -->
+    <circle cx="140" cy="20" r="4" fill="#3B82F6"/>
+    <circle cx="250" cy="60" r="4" fill="#06B6D4"/>
+    <circle cx="250" cy="190" r="4" fill="#2DD4BF"/>
+    <circle cx="140" cy="270" r="4" fill="#2DD4BF"/>
+    <circle cx="30" cy="190" r="4" fill="#06B6D4"/>
+    <circle cx="30" cy="60" r="4" fill="#3B82F6"/>
+  </g>
+
+  <!-- Suite Pill Header -->
+  <g transform="translate(450, 165)">
+    <rect width="250" height="34" rx="17" fill="#1E293B" fill-opacity="0.8" stroke="url(#primary-gradient)" stroke-width="1.2" stroke-opacity="0.6"/>
+    <circle cx="20" cy="17" r="5" fill="#2DD4BF" filter="url(#subtle-glow)"/>
+    <text x="36" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#94A3B8" letter-spacing="1.5">STELLAR ARCHIVAL LABS</text>
+  </g>
+
+  <!-- Repository Name Heading (SVG <text> elements) -->
+  <g transform="translate(450, 260)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="54" font-weight="900" fill="url(#primary-gradient)" letter-spacing="-1">SOROBAN STATE</text>
+    <text x="0" y="65" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="54" font-weight="900" fill="#F8FAFC" letter-spacing="-1">SENTINEL</text>
+  </g>
+
+  <!-- Tagline / Description -->
+  <g transform="translate(450, 395)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="400" fill="#94A3B8">Monitor deployed Soroban contracts for TTL / state-archival risk,</text>
+    <text x="0" y="28" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="400" fill="#94A3B8">and generate unsigned remediation transactions.</text>
+  </g>
+
+  <!-- Footer Feature Badges / Metric Indicators -->
+  <g transform="translate(450, 465)">
+    <!-- Badge 1: Health Scanner -->
+    <rect x="0" y="0" width="165" height="30" rx="8" fill="#1E293B" fill-opacity="0.5" stroke="#334155" stroke-width="1"/>
+    <circle cx="15" cy="15" r="4" fill="#3B82F6"/>
+    <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#CBD5E1">TTL Health Bands</text>
+
+    <!-- Badge 2: Cost Calculation -->
+    <rect x="180" y="0" width="155" height="30" rx="8" fill="#1E293B" fill-opacity="0.5" stroke="#334155" stroke-width="1"/>
+    <circle cx="195" cy="15" r="4" fill="#06B6D4"/>
+    <text x="208" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#CBD5E1">Exact Stroop Costs</text>
+
+    <!-- Badge 3: Unsigned XDR -->
+    <rect x="350" y="0" width="175" height="30" rx="8" fill="#1E293B" fill-opacity="0.5" stroke="#334155" stroke-width="1"/>
+    <circle cx="365" cy="15" r="4" fill="#2DD4BF"/>
+    <text x="378" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#CBD5E1">Unsigned XDR Builder</text>
+  </g>
+</svg>

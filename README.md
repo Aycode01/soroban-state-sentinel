@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="soroban-state-sentinel banner" width="100%" />
+</p>
+
 # soroban-state-sentinel
 
 Monitor deployed Soroban contracts for TTL / state-archival risk, and generate
