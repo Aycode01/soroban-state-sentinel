@@ -1,18 +1,30 @@
-# Summary
+# Table of contents
 
 * [Introduction](introduction.md)
-* [The archival problem](the-archival-problem.md)
-* [Economics of rent](economics-of-rent.md)
-* [CLI reference](cli-reference/scan.md)
-  * [scan](cli-reference/scan.md)
-  * [extend](cli-reference/extend.md)
-  * [restore](cli-reference/restore.md)
-* [JSON schema reference](json-schema-reference.md)
-* [Guides](guides/for-maintainers.md)
-  * [For maintainers](guides/for-maintainers.md)
-  * [For keeper operators](guides/for-keeper-operators.md)
-* [Developer guide](developer-guide/local-setup.md)
-  * [Local setup](developer-guide/local-setup.md)
-  * [Environment and configuration](developer-guide/environment-and-config.md)
-  * [Mock RPC for testing](developer-guide/mock-rpc-for-testing.md)
+* [The Archival Problem](the-archival-problem.md)
+* [Economics of Rent](economics-of-rent.md)
+
+## CLI Reference
+
+* [scan](cli-reference/scan.md)
+* [extend](cli-reference/extend.md)
+* [restore](cli-reference/restore.md)
+
+## Schema & API
+
+* [JSON Schema Reference](json-schema-reference.md)
+
+## User Guides
+
+* [For Maintainers](guides/for-maintainers.md)
+* [For Keeper Operators](guides/for-keeper-operators.md)
+
+## Developer Guide
+
+* [Local Setup](developer-guide/local-setup.md)
+* [Environment & Configuration](developer-guide/environment-and-config.md)
+* [Mock RPC for Testing](developer-guide/mock-rpc-for-testing.md)
+
+## Contributing
+
 * [Contributing](contributing.md)
