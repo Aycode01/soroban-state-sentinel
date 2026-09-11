@@ -1,81 +1,41 @@
-# The archival problem
+# The Archival Problem
 
-Soroban ledger entries that are not permanently referenced have a limited
-lifespan. Each entry carries a TTL entry with a `liveUntilLedgerSeq`; when the
-latest ledger passes that sequence, the entry stops being part of the live
-state. What happens next depends on the entry's durability.
+Soroban state archival balances ledger growth and state access costs. Every entry written to the ledger carries a Time-To-Live (TTL) sequence counter.
 
-## Storage durability types
+## Storage Durability Types
 
-| Durability | At TTL zero |
-| --- | --- |
-| **Temporary** | Deleted permanently. The data is gone and cannot be recovered. |
-| **Persistent** (contract instance, contract code, persistent data) | Archived / evicted. The entry leaves the live state; to read it again you must first restore it. |
-| **Instance** | The contract instance is a persistent contract-data entry with the special `ScVal::LedgerKeyContractInstance` key. It archives like any other persistent entry. |
+Soroban defines three storage durability categories:
 
-The important distinction: temporary entries are *deleted*, persistent and
-instance entries are *archived*. Archived entries still exist — restoring them
-brings them back into the live state with a fresh TTL.
+1. **Temporary Storage**: Holds transient data. When TTL reaches zero, temporary entries are permanently deleted from the ledger and cannot be restored.
+2. **Instance Storage**: Holds contract executable metadata and state bound to the contract instance. When TTL reaches zero, the entry is archived (evicted from live state) and becomes unreadable until restored.
+3. **Persistent Storage**: Holds user-defined contract data. When TTL reaches zero, persistent entries are archived and become unreadable until restored.
 
-## The lifecycle as a state machine
+Both `Instance` and `Persistent` storage require issuing a `RestoreFootprintOp` to re-enter live state after archival.
+
+## Health Band Lifecycle
+
+`soroban-state-sentinel` tracks entry lifecycle across four distinct health bands:
 
 ```
-Healthy ──► ExpiringSoon ──► Critical ──► Archived ──► Healthy
-     ▲                                             (restore)
-     └─────────────────────────────────────────────┘
+[Healthy] ---> [ExpiringSoon] ---> [Critical] ---> [Archived]
+    ^                                                   |
+    |-------------- (RestoreFootprintOp) ---------------|
 ```
 
-The tool classifies each entry into exactly one band from its ledgers remaining
-until archival (`liveUntilLedgerSeq - currentLedgerSeq`):
+The CLI uses the following default thresholds (configurable via `--healthy-days` and `--critical-days` assuming 5-second ledger close times):
 
-- **`healthy`** — more than the healthy threshold of ledgers remaining. No
-  action needed.
-- **`expiring_soon`** — between the critical and healthy thresholds. Schedule an
-  extension.
-- **`critical`** — at or below the critical threshold, including 0 (the entry is
-  live only through the current ledger). Extend now.
-- **`archived`** — the entry is not readable in the live state at all. Restore
-  it before you can read or extend it.
+| Health Band | Default Ledger Threshold | Default Days | Description |
+| --- | --- | --- | --- |
+| `Healthy` | `> 518,400` ledgers | `> 30` days | Entry TTL is secure. No action needed. |
+| `ExpiringSoon` | `120,961` to `518,400` ledgers | `7` to `30` days | Entry TTL is decaying. Schedule extension. |
+| `Critical` | `0` to `120,960` ledgers | `0` to `7` days | Entry is at immediate risk. Issue `ExtendFootprintTTLOp`. |
+| `Archived` | `None` (unreadable in live state) | `N/A` | Entry has expired. Issue `RestoreFootprintOp`. |
 
-### The exact thresholds this tool uses
+## Canonical Operation Names
 
-The thresholds are CLI inputs, not hardcoded constants. The defaults, straight
-from `crates/cli/src/args.rs`, are:
+Remediation transactions MUST use the protocol-standard operation names:
 
-- `--healthy-days 30` — entries with **more than** 30 days remaining are
-  `healthy`.
-- `--critical-days 7` — entries with **at most** 7 days remaining are
-  `critical`.
+- **`ExtendFootprintTTLOp`**: Extends the live TTL of persistent or instance storage entries.
+- **`RestoreFootprintOp`**: Restores archived persistent or instance storage entries back into live state.
 
-Days are converted to ledgers at the ledger close time (5 seconds by default,
-labeled `default` vs `explicit` — see [Economics of rent](economics-of-rent.md)):
-
-- `healthy_min_ledgers = 518400` (30 × 86,400 / 5)
-- `critical_max_ledgers = 120960` (7 × 86,400 / 5)
-
-Classification (`crates/ttl-scanner/src/health.rs`):
-
-| Ledgers remaining | Band |
-| --- | --- |
-| unreadable (no live entry) | `archived` |
-| `> 518400` | `healthy` |
-| `> 120960` | `expiring_soon` |
-| `<= 120960` (including 0) | `critical` |
-
-The boundary rules matter: exactly 30 days is `expiring_soon`, not `healthy`,
-and exactly 7 days is `critical`. These ledger values appear in every `scan
---json` document under `health_config`.
-
-## The two operations
-
-There are exactly two remediation operations in current protocol-28 Stellar:
-
-- **`ExtendFootprintTTLOp`** — extends the TTL of the footprint's live entries.
-  This is the proactive fix for `expiring_soon` / `critical` entries.
-- **`RestoreFootprintOp`** — restores archived entries back into the live
-  state. This is the fix for `archived` entries.
-
-Older material that calls these `BumpFootprintExpirationOp` /
-`BumpFootprintInstanceOp` is describing a deprecated pre-protocol-20 name. The
-sentinel only ever emits the current names, and it derives the field layout
-from the `stellar-xdr` crate for the live protocol — never from memory.
+Legacy documentation or earlier protocol proposals referencing `BumpFootprintExpirationOp` or `BumpFootprintInstanceOp` reflect deprecated pre-protocol-20 terminology.
