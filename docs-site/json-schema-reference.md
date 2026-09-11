@@ -1,155 +1,94 @@
-# JSON schema reference (`scan --json`)
+# JSON Schema Reference
 
-This page documents the stable output contract of `scan --json`. It mirrors
-[`SCHEMA.md`](../SCHEMA.md) in the repository, which is the canonical source.
-Downstream consumers — notably `action-state-watch`, which parses `scan --json`
-and depends on the `--fail-on-critical` exit code — should treat this document
-as the "what does it return" contract.
+`soroban-state-sentinel scan --json` outputs a machine-readable JSON document designed for automated consuming pipelines such as `action-state-watch`.
 
-**Binary name.** Consumers shell out to `soroban-state-sentinel` (the explicit
-`[[bin]]` name in `crates/cli/Cargo.toml`; the crate is `sentinel-cli`). The
-invocation name is part of the contract and will not change without a major
-version bump.
+## Current Version & Stability Policy
 
-## Schema version
+- **Current Version**: `1.1.0` (defined by constant `SCHEMA_VERSION` in `crates/cli/src/output/json.rs`).
+- **Additive Policy**: Minor version bumps (`1.x.0`) strictly contain non-breaking additive fields. Major version bumps (`2.0.0`) mark breaking changes (field removals, renames, type changes) and require explicit downstream coordination.
 
-Current version: **`1.1.0`** (constant `SCHEMA_VERSION` in
-`crates/cli/src/output/json.rs`).
+## Field-by-Field Reference
 
-Version history:
+### Top-Level Document
 
-- **`1.1.0`** (additive) — documents the `extend` subcommand's contract. The
-  `scan` JSON document shape is **unchanged** from `1.0.0`; existing consumers
-  need no migration.
-- **`1.0.0`** — initial contract: `scan --json` document + exit codes.
-
-## Exit codes (all subcommands)
-
-| Code | Meaning |
-| --- | --- |
-| `0` | Success. With `--fail-on-critical`: no entry is in the `critical` or `archived` band. |
-| `1` | `--fail-on-critical` set **and** at least one entry is `critical` or `archived`. Only `scan` ever sets this. |
-| `2` | Usage or operational error: bad arguments, invalid strkey/SCVal, RPC failure, XDR build/serialization failure, I/O failure. |
-
-`extend` and `restore` never set exit `1`. `--fail-on-critical` is the
-automation hook: a watcher runs
-`soroban-state-sentinel scan <id> --fail-on-critical --json`, and exit code `1`
-means "action required now". The triggering condition is exactly
-`summary.has_critical == true`.
-
-## Top-level document
-
-All field names are `snake_case`.
-
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `schema_version` | string | Current schema version (`1.1.0`). |
-| `generated_at_unix` | u64 | Unix time in seconds when the document was generated. |
-| `command` | object | What was invoked. |
-| `network` | object | Live network parameters the scan read or resolved. |
-| `health_config` | object | The band thresholds that were applied. |
-| `summary` | object | Band counts across all scanned entries. |
-| `entries` | array | One entry object per scanned ledger entry. |
+| `schema_version` | `string` | Contract version string (`"1.1.0"`). |
+| `generated_at_unix` | `u64` | UTC Unix timestamp of scan execution in seconds. |
+| `command` | `object` | Execution parameters object. |
+| `network` | `object` | Network state and configuration parameters. |
+| `health_config` | `object` | Effective health band boundaries used for classification. |
+| `summary` | `object` | Aggregate entry counts and status flags. |
+| `entries` | `array` | Array of per-entry health and cost objects. |
 
-### `command`
+### `command` Object
 
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `subcommand` | string | Always `"scan"`. |
-| `contract_id` | string | The contract id as given on the command line (`C…` strkey). |
-| `rpc_url` | string | The RPC endpoint used. |
+| `subcommand` | `string` | Subcommand executed (`"scan"`). |
+| `contract_id` | `string` | Contract ID strkey (`C...`) requested. |
+| `rpc_url` | `string` | Soroban RPC endpoint queried. |
 
-### `network`
+### `network` Object
 
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `passphrase` | string | Network passphrase (e.g. `Test SDF Network ; September 2015`). |
-| `protocol_version` | u32 | Protocol version of the latest ledger. |
-| `latest_ledger` | u32 | Sequence of the latest ledger at scan time. |
-| `ledger_close_seconds` | u64 | Ledger close time used for day conversions. |
-| `ledger_close_seconds_source` | `"default"` \| `"explicit"` | `default` = the 5 s target was assumed; `explicit` = supplied via `--ledger-close-seconds`. |
-| `fee_per_rent_1kb` | i64 | Resolved rent fee per 1 KB in stroops. |
-| `fee_per_rent_1kb_source` | `"explicit"` \| `"average_state_size"` \| `"state_size_high"` | Which resolution path produced `fee_per_rent_1kb` (see [Economics of rent](economics-of-rent.md)). |
-| `average_soroban_state_size_bytes` | i64 \| null | The state size used, when `--average-state-size-bytes` was supplied. |
-| `max_entry_ttl` | u32 | Live network `max_entry_ttl` (upper bound for extend targets). |
-| `min_persistent_ttl` | u32 | Live network minimum TTL for persistent entries (drives restore pricing). |
-| `min_temporary_ttl` | u32 | Live network minimum TTL for temporary entries. |
+| `passphrase` | `string` | Network passphrase string. |
+| `protocol_version` | `u32` | Protocol version running on network. |
+| `latest_ledger` | `u32` | Latest sequence number read from RPC. |
+| `ledger_close_seconds` | `u64` | Average ledger close duration in seconds. |
+| `ledger_close_seconds_source` | `string` | Source of close time (`"default"` or `"explicit"`). |
+| `fee_per_rent_1kb` | `i64` | Rent fee rate per 1KB in stroops. |
+| `fee_per_rent_1kb_source` | `string` | Calculation source (`"explicit"`, `"average_state_size"`, or `"state_size_high"`). |
+| `average_soroban_state_size_bytes` | `i64 \| null` | Input state size in bytes, or `null` if default plateau used. |
+| `max_entry_ttl` | `u32` | Maximum TTL cap enforced by protocol. |
+| `min_persistent_ttl` | `u32` | Minimum persistent entry TTL after restoration. |
+| `min_temporary_ttl` | `u32` | Minimum temporary entry TTL. |
 
-### `health_config`
+### `health_config` Object
 
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `healthy_min_days` | u32 | Healthy lower bound in days (default 30). |
-| `critical_max_days` | u32 | Critical upper bound in days (default 7). |
-| `healthy_min_ledgers` | u32 | The day bound converted to ledgers (default 518,400). |
-| `critical_max_ledgers` | u32 | The day bound converted to ledgers (default 120,960). |
-| `extend_horizon_ledgers` | u32 | Horizon used for the per-entry extend-cost projection (defaults to `healthy_min_ledgers`). |
+| `healthy_min_days` | `u32` | Healthy band threshold in days. |
+| `critical_max_days` | `u32` | Critical band threshold in days. |
+| `healthy_min_ledgers` | `u32` | Healthy band threshold converted to ledgers. |
+| `critical_max_ledgers` | `u32` | Critical band threshold converted to ledgers. |
+| `extend_horizon_ledgers` | `u32` | Target horizon in ledgers used for fee projections. |
 
-### `summary`
+### `summary` Object
 
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `entries_scanned` | usize | Total entries scanned. |
-| `healthy` | usize | Count in the `healthy` band. |
-| `expiring_soon` | usize | Count in the `expiring_soon` band. |
-| `critical` | usize | Count in the `critical` band. |
-| `archived` | usize | Count in the `archived` band. |
-| `has_critical` | bool | True if any entry is `critical` or `archived`. Drives `--fail-on-critical`. |
+| `entries_scanned` | `u32` | Total number of entries evaluated. |
+| `healthy` | `u32` | Count of entries in `healthy` band. |
+| `expiring_soon` | `u32` | Count of entries in `expiring_soon` band. |
+| `critical` | `u32` | Count of entries in `critical` band. |
+| `archived` | `u32` | Count of entries in `archived` band. |
+| `has_critical` | `boolean` | `true` if `critical > 0` or `archived > 0` (triggers exit code 1 with `--fail-on-critical`). |
 
-### `entries[]`
+### `entries[]` Element Object
 
-| Field | Type | Meaning |
+| Field | Type | Description |
 | --- | --- | --- |
-| `id` | string | Stable row id: `"instance"`, `"code"`, or `"key.<index>"`. |
-| `label` | string | Human-readable label (e.g. `contract instance`, `contract code (wasm)`). |
-| `kind` | string | `"contract_instance"` \| `"contract_code"` \| `"contract_data"`. |
-| `durability` | `"persistent"` \| `"temporary"` \| null | Known for contract-data entries, `null` otherwise. |
-| `band` | string | `"healthy"` \| `"expiring_soon"` \| `"critical"` \| `"archived"`. Stable machine-readable names. |
-| `current_ledger_seq` | u32 | Latest ledger at scan time. |
-| `live_until_ledger_seq` | u32 \| null | Entry's live-until ledger. `null` ⇒ archived. |
-| `ledgers_remaining` | u32 \| null | `live_until_ledger_seq − current_ledger_seq`, clamped at 0. `null` ⇒ archived. |
-| `days_remaining` | u64 \| null | `floor(ledgers_remaining × ledger_close_seconds / 86400)`. |
-| `estimated_archive_unix` | u64 \| null | Estimated Unix time (seconds) of archival, if computable. |
-| `size_bytes` | u32 \| null | XDR size of the live entry in bytes. |
-| `key_xdr` | string | Base64-XDR `LedgerKey` of the entry. |
-| `ttl_key_xdr` | string | Base64-XDR `LedgerKey::Ttl` governing the entry. |
-| `extend_to_healthy_cost_stroops` | i64 \| null | Stroop cost to extend this entry to `extend_horizon_ledgers` from the current ledger. `null` when archived (extend does nothing for archived entries). |
-| `restore_cost_stroops` | i64 \| null | Non-null **only** for archived entries. |
+| `id` | `string` | Identifier (`"instance"`, `"code"`, or `"key.<index>"`). |
+| `label` | `string` | Human-readable entry label. |
+| `kind` | `string` | Entry category (`"contract_instance"`, `"contract_code"`, `"contract_data"`). |
+| `durability` | `string \| null` | Storage durability (`"persistent"`, `"temporary"`, or `null`). |
+| `band` | `string` | Machine-readable health band (`"healthy"`, `"expiring_soon"`, `"critical"`, `"archived"`). |
+| `current_ledger_seq` | `u32` | Current network ledger sequence. |
+| `live_until_ledger_seq` | `u32 \| null` | Expiration ledger sequence (`null` if archived). |
+| `ledgers_remaining` | `u32 \| null` | Ledgers remaining until archival (`null` if archived). |
+| `days_remaining` | `u64 \| null` | Floor of remaining days (`null` if archived). |
+| `estimated_archive_unix` | `u64 \| null` | Estimated UTC Unix archival timestamp (`null` if archived). |
+| `size_bytes` | `u32 \| null` | Entry size in bytes (`null` if archived). |
+| `key_xdr` | `string` | Base64-encoded `LedgerKey`. |
+| `ttl_key_xdr` | `string` | Base64-encoded `LedgerKey::Ttl`. |
+| `extend_to_healthy_cost_stroops` | `i64 \| null` | Estimated stroop cost to extend to healthy horizon (`null` if archived). |
+| `restore_cost_stroops` | `i64 \| null` | Estimated stroop cost to restore (`null` if live). |
 
-## Semantics
+## Real Verbatim JSON Output Example
 
-- `band` values are the stable machine-readable names: `healthy`,
-  `expiring_soon`, `critical`, `archived`.
-- `ledgers_remaining = live_until_ledger_seq - current_ledger_seq` (clamped at
-  0). `null` means the entry is not readable in the live state (archived), and
-  `band` is `archived`.
-- `days_remaining` is `floor(ledgers_remaining * ledger_close_seconds / 86400)`.
-- `extend_to_healthy_cost_stroops` is the stroop cost to extend the entry to
-  `extend_horizon_ledgers` from the current ledger; it is `null` for archived
-  entries.
-- `restore_cost_stroops` is non-null **only** for archived entries.
-- `durability` is known for contract-data entries and `null` otherwise.
-
-## Extension policy
-
-- **Non-breaking** (additive) changes — e.g. new optional fields — bump the
-  minor component (`1.x`) and are safe for existing consumers.
-- **Breaking** changes — renames, removed fields, changed types, changed band
-  names — bump the major component and must be coordinated with
-  `action-state-watch` before merging. Breaking changes require a version bump
-  in `SCHEMA.md`, never a silent reshape.
-
-## Output formats other than JSON
-
-`--markdown` and `--table` are human-oriented and **not** part of this
-contract; they may change freely. `extend` and `restore` write a file, not
-stdout JSON, and are not consumed by `action-state-watch`; their file formats
-are therefore not versioned.
-
-## Real response example
-
-Verbatim `scan --json` output from `docs/live-verification.md` (2026-09-08,
-protocol 28, live testnet) — not hand-typed:
+Taken from live verification against contract `CCJQB4EEQLBL7RHIPYMYG26ZT2QRKEYNGVWWL2EPZCECFI6GZGNXMIEX`:
 
 ```json
 {
