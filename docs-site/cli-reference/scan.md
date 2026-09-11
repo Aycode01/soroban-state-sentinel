@@ -1,79 +1,55 @@
 # `scan`
 
-```text
-soroban-state-sentinel scan <contract-id> [flags]
+The `scan` subcommand queries Soroban RPC for a contract's instance, code, and optional storage entries, evaluating each entry's TTL health against defined thresholds.
+
+## Command Syntax
+
+```bash
+soroban-state-sentinel scan <CONTRACT_ID> [FLAGS]
 ```
 
-Scans a contract's ledger entries (instance + code + explicit storage keys) and
-classifies each into a health band. This is the read-and-report command; it
-never writes XDR and never signs anything.
+## Options & Arguments
 
-## Flags
+### Positional Arguments
 
-All flag names, types, and defaults below are from the `clap` definitions in
-`crates/cli/src/args.rs`.
+- **`<CONTRACT_ID>`** (`String`): Contract ID strkey (`C...`) to scan.
 
-| Flag | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `contract_id` | positional | — | Contract id (`C…` strkey). Required. |
-| `--keys <SCVAL_BASE64>` | repeatable | — | Explicit storage keys to scan, each a base64-XDR-encoded `SCVal`. |
-| `--durability <persistent\|temporary>` | enum | `persistent` | Durability assumed for `--keys` entries. |
-| `--healthy-days <N>` | u32 | `30` | Healthy lower bound in days. Entries with more ledgers left are Healthy. |
-| `--critical-days <N>` | u32 | `7` | Critical upper bound in days. Entries with fewer ledgers left are Critical. |
-| `--extend-horizon-ledgers <N>` | u32 | — | Horizon (ledgers from now) for the per-entry extend-cost projection. Defaults to the healthy threshold in ledgers (518,400 at defaults). |
-| `--fail-on-critical` | flag | off | Exit with code 1 if any entry is Critical or Archived. |
-| `--json` | flag | off | Machine-readable JSON output (the stable schema — see [JSON schema reference](../json-schema-reference.md)). |
-| `--markdown` | flag | off | Markdown table output. |
-| `--table` | flag | off | Terminal table output (the default). |
+### Command Flags
 
-`--json`, `--markdown`, and `--table` are mutually exclusive; the default is the
-terminal table.
+- **`--keys <SCVAL_BASE64>`** (`Vec<String>`): Explicit storage keys to scan, each a base64-XDR-encoded `SCVal`. Flag can be repeated.
+- **`--durability <DURABILITY>`** (`Enum`, default: `persistent`): Storage durability for `--keys` entries. Allowed values: `persistent`, `temporary`.
+- **`--healthy-days <DAYS>`** (`u32`, default: `30`): Lower bound in days for `Healthy` band classification.
+- **`--critical-days <DAYS>`** (`u32`, default: `7`): Upper bound in days for `Critical` band classification.
+- **`--extend-horizon-ledgers <LEDGERS>`** (`Option<u32>`): Horizon in ledgers used for per-entry extension cost projections. Defaults to `healthy_min_ledgers`.
+- **`--fail-on-critical`** (`bool`, default: `false`): Exit with code `1` if any entry is classified as `critical` or `archived`. Used in automated keeper pipelines.
+- **`--json`** (`bool`): Output formatted JSON document matching Schema Version `1.1.0`. Conflicts with `--markdown` and `--table`.
+- **`--markdown`** (`bool`): Output Github-flavored markdown table. Conflicts with `--json` and `--table`.
+- **`--table`** (`bool`): Output formatted terminal table (default format). Conflicts with `--json` and `--markdown`.
 
-### Global flags (shared by all subcommands)
+### Global Network Flags
 
-| Flag | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `--rpc-url <URL>` | string | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint. |
-| `--ledger-close-seconds <N>` | u64 | `5` | Average ledger close time in seconds; used to convert ledgers to days. RPC does not expose the actual average, so an explicit value is labeled `explicit` in the output. |
-| `--average-state-size-bytes <N>` | i64 | — | Explicit average live Soroban state size in bytes, used to compute `fee_per_rent_1kb`. |
-| `--rent-fee-per-1kb <N>` | i64 | — | Explicit fee per 1 KB of rented space (stroops). Overrides both `--average-state-size-bytes` and the default plateau. |
-| `--ttl-entry-size <N>` | u32 | `48` | Size of a TTL entry in bytes (protocol constant, overridable). |
+- **`--rpc-url <URL>`** (`String`, default: `https://soroban-testnet.stellar.org`): Soroban RPC endpoint URL.
+- **`--ledger-close-seconds <SECONDS>`** (`u64`, default: `5`): Average ledger close duration in seconds.
+- **`--average-state-size-bytes <BYTES>`** (`Option<i64>`): Explicit average live state size used to derive `fee_per_rent_1kb`.
+- **`--rent-fee-per-1kb <STROOPS>`** (`Option<i64>`): Explicit rent write fee per 1KB override in stroops.
+- **`--ttl-entry-size <BYTES>`** (`u32`, default: `48`): Protocol size of a TTL ledger entry in bytes.
 
-## What triggers each flag
+## Execution Trigger Context
 
-- **A maintainer checking one contract by hand** runs
-  `scan <contract-id>` and reads the terminal table. They pass `--keys` only for
-  specific persistent data entries they care about, because the scan cannot
-  enumerate a contract's full key set (RPC has no "list all keys" method).
-- **A keeper in a scheduled pipeline** runs
-  `scan <contract-id> --fail-on-critical --json` and treats exit code 1 as
-  "action required now". See [For keeper operators](../guides/for-keeper-operators.md).
-- **`--healthy-days` / `--critical-days`** let an operator tighten or loosen the
-  bands. They convert to ledgers at the ledger close time and appear in the JSON
-  output as `health_config.healthy_min_ledgers` / `critical_max_ledgers`.
-- **`--extend-horizon-ledgers`** changes only the cost projection, not the band
-  classification.
-- **`--average-state-size-bytes` / `--rent-fee-per-1kb`** change how
-  `fee_per_rent_1kb` is resolved — see [Economics of rent](../economics-of-rent.md).
+- **Manual Maintainer Checks**: Run without flags or with `--table`/`--markdown` to visually inspect contract state.
+- **Automated Keeper Runs**: Run with `--json --fail-on-critical` inside cron jobs or CI actions to trigger alerts on exit code `1`.
 
-## Exit codes
+## Exit Codes
 
-From `SCHEMA.md` (the stable contract; `action-state-watch` depends on the
-`--fail-on-critical` code):
-
-| Code | Meaning |
+| Exit Code | Meaning |
 | --- | --- |
-| `0` | Success. With `--fail-on-critical`: no entry is in the `critical` or `archived` band. |
-| `1` | `--fail-on-critical` set **and** at least one entry is `critical` or `archived`. Only `scan` ever sets this. |
-| `2` | Usage or operational error: bad arguments, invalid strkey/SCVal, RPC failure, XDR build/serialization failure, I/O failure. |
+| `0` | Success. If `--fail-on-critical` is set, no entry is in `critical` or `archived` band. |
+| `1` | Action required: `--fail-on-critical` is set **and** at least one entry is `critical` or `archived`. |
+| `2` | Usage or operational error (bad arguments, invalid strkey/SCVal, RPC network failure). |
 
-The band that triggers exit 1 is exactly `summary.has_critical == true` (any
-entry with `band == "critical"` or `band == "archived"`).
+## Real Verbatim Output Example
 
-## Real example (verbatim from the live verification pass)
-
-`docs/live-verification.md` (2026-09-08, protocol 28, latest ledger 4,567,902)
-against the live testnet RPC:
+Verbatim execution transcript from `docs/live-verification.md`:
 
 ```console
 $ soroban-state-sentinel scan CCJQB4EEQLBL7RHIPYMYG26ZT2QRKEYNGVWWL2EPZCECFI6GZGNXMIEX --json
@@ -151,7 +127,3 @@ $ soroban-state-sentinel scan CCJQB4EEQLBL7RHIPYMYG26ZT2QRKEYNGVWWL2EPZCECFI6GZG
   ]
 }
 ```
-
-Both entries are `critical` with 54,482 ledgers (~3 days) remaining — the exact
-scenario this tool exists to catch. The output contract is documented field by
-field in [JSON schema reference](../json-schema-reference.md).
