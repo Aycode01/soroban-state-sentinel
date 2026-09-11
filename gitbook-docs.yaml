@@ -4,8 +4,8 @@ site:
   structure:
     - type: space
       key: space-1
-      title: Untitled
-      path: untitled
+      title: soroban-state-sentinel Docs
+      path: /
       default: true
       content:
-        directory: ./untitled
+        directory: ./docs-site

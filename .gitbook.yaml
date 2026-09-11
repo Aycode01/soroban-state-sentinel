@@ -1,3 +1,4 @@
+root: ./docs-site
 structure:
-  readme: docs-site/introduction.md
+  readme: README.md
   summary: SUMMARY.md

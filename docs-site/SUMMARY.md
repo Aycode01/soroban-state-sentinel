@@ -1,6 +1,6 @@
 # Table of contents
 
-* [Introduction](introduction.md)
+* [Introduction](README.md)
 * [The Archival Problem](the-archival-problem.md)
 * [Economics of Rent](economics-of-rent.md)
 
