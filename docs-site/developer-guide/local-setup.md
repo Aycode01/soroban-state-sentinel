@@ -1,73 +1,59 @@
-# Local setup
+# Local Setup
 
-This page gets a contributor from clone to a passing test suite. It mirrors the
-repo's actual `Cargo.toml` and `rust-toolchain.toml`.
+This guide details cloning, building, and running tests for the `soroban-state-sentinel` codebase.
 
-## Toolchain
+## Prerequisites
 
-The toolchain is pinned in [`rust-toolchain.toml`](../../rust-toolchain.toml):
+- **Rust**: Pinned to stable channel (minimum supported Rust version `1.84`, as defined in `Cargo.toml` and `rust-toolchain.toml`).
+- **Cargo Components**: `rustfmt`, `clippy`.
 
-- `channel = "stable"` with `profile = "minimal"` and the `rustfmt` and
-  `clippy` components. `rustup` installs it on first use.
-- The workspace declares `rust-version = "1.84"` and `edition = "2021"`
-  (workspace `Cargo.toml`). The rent model and XDR code target protocol 28
-  (`stellar-xdr` 28.x), which requires Rust ≥ 1.84.
+## Workspace Architecture
 
-## Clone and build
+The workspace consists of 5 modular library crates and 1 root integration test crate:
+
+```
+crates/
+├── cli/          # sentinel-cli: CLI binary interface & output formatting
+├── rent-model/   # sentinel-rent-model: Canonical fee math ported from soroban-env-host
+├── rpc-client/   # sentinel-rpc-client: Soroban JSON-RPC protocol 28 communication
+├── ttl-scanner/  # sentinel-ttl-scanner: TTL health classification & horizon rules
+└── xdr-builder/  # sentinel-xdr-builder: Unsigned XDR op and envelope generation
+tests/            # integration_test.rs & mock_rpc.rs test harness
+```
+
+## Build Steps
+
+Clone the repository and build all workspace crates:
 
 ```bash
-git clone https://github.com/stellar-archival-labs/soroban-state-sentinel
+git clone https://github.com/stellar-archival-labs/soroban-state-sentinel.git
 cd soroban-state-sentinel
-cargo build --release            # release binary
-cargo build -p sentinel-cli      # debug binary, needed before running tests
+cargo build --workspace
 ```
 
-The workspace (`resolver = "2"`) has five member crates, each with one job:
-
-| Crate | Responsibility |
-| --- | --- |
-| `crates/rpc-client` (`sentinel-rpc-client`) | Typed JSON-RPC client; read-only by construction. |
-| `crates/ttl-scanner` (`sentinel-ttl-scanner`) | Entry health classification into the four bands. |
-| `crates/rent-model` (`sentinel-rent-model`) | Ported rent-fee computation + stroop projections. |
-| `crates/xdr-builder` (`sentinel-xdr-builder`) | Unsigned `ExtendFootprintTtl` / `RestoreFootprint` builders. |
-| `crates/cli` (`sentinel-cli`) | The `soroban-state-sentinel` binary. |
-
-The root package owns the integration tests (`tests/`) and has no library or
-binary of its own — the tests spawn the compiled CLI binary and talk to a local
-mock RPC server.
-
-## Run the tests
+To build the optimized release binary:
 
 ```bash
-cargo build -p sentinel-cli   # integration tests spawn this binary
+cargo build --release -p sentinel-cli
+```
+
+The release binary will be placed at `target/release/soroban-state-sentinel`.
+
+## Running Tests
+
+Run the full workspace unit and integration test suite:
+
+```bash
 cargo test --workspace
 ```
 
-Current pass count: **49 tests** (42 unit tests across the five crates plus 7
-integration tests in `tests/` that spawn the CLI against the mock RPC), 0
-failures, captured from a local `cargo test --workspace` run on 2026-09-08.
+### Real Test Pass Count
 
-<!-- VERIFY: update this count whenever the test suite changes. The authoritative
-number is the latest CI run (.github/workflows/ci.yml runs
-`cargo test --workspace`) or a fresh local run; this page should never show a
-stale count. -->
+The workspace test suite currently executes and passes **49 tests** in total:
 
-## Quality gates (enforced in CI)
-
-CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull
-request:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo build -p sentinel-cli   # before tests
-cargo test --workspace
-```
-
-## A note on network access
-
-The integration tests do **not** hit a live network. They run against the mock
-RPC server (`tests/mock_rpc.rs`) seeded with fixtures captured from the live
-testnet on 2026-09-08 — see [Mock RPC for testing](mock-rpc-for-testing.md).
-The only thing a live network is needed for is the `docs/live-verification.md`
-pass, which is a hand-run exercise, not part of CI.
+- `sentinel-cli` (unit tests): 8 passed
+- `sentinel-rent-model` (unit tests): 9 passed
+- `sentinel-rpc-client` (unit tests): 2 passed
+- `sentinel-ttl-scanner` (unit tests): 8 passed
+- `sentinel-xdr-builder` (unit tests): 15 passed
+- `soroban-state-sentinel-tests` (integration suite): 7 passed
