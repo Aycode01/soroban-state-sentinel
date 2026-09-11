@@ -49,7 +49,7 @@ into health bands, with an exact stroop cost to extend or restore each one.
   integration point `action-state-watch` depends on — the contract is
   documented in [SCHEMA.md](SCHEMA.md)).
 - **JSON / Markdown / terminal-table** output. The JSON output is a versioned
-  schema (`schema_version: "1.0.0"`, see [SCHEMA.md](SCHEMA.md)).
+  schema (`schema_version: "1.1.0"`, see [SCHEMA.md](SCHEMA.md)).
 
 Nothing here is hardcoded protocol data: fee rates, rent-rate denominators, TTL
 bounds, resource limits, and ledger close time are read from the live network
