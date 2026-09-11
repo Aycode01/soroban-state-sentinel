@@ -1,97 +1,42 @@
-# Mock RPC for testing
+# Mock RPC for Testing
 
-The integration tests (`tests/integration_test.rs`) never touch a live network.
-They spawn the compiled CLI binary and drive it against a local mock Soroban RPC
-server (`tests/mock_rpc.rs`) — a bare `tokio::net::TcpListener` speaking
-HTTP/1.1, with no extra dependencies — seeded with fixtures captured from the
-live testnet on 2026-09-08.
+Integration tests in `tests/` validate CLI subcommands against an in-process mock Soroban RPC server (`tests/mock_rpc.rs`).
 
-## How the harness works
+## Mock Server Architecture
 
-`MockRpc` has three building blocks, all chained before `start()`:
+`MockRpc` binds a `tokio::net::TcpListener` to an ephemeral local port (`127.0.0.1:0`) and speaks HTTP/1.1 JSON-RPC. It requires no external network access or third-party mock crates.
 
-```rust
-let url = mock_rpc::MockRpc::from_fixtures(FIXTURES)   // getLatestLedger.json + getNetwork.json
-    .with_config_fixture(FIXTURES)                     // getLedgerEntries_config.json (the 7 CONFIG_SETTING keys)
-    .with_entry(key_b64, entry_json)                   // synthetic entries, keyed by base64 LedgerKey
-    .start()                                           // binds 127.0.0.1:0, returns the base URL
-    .await;
-```
+It responds to three core Soroban RPC methods:
+- **`getLatestLedger`**: Returns ledger sequence, protocol version, and close time.
+- **`getNetwork`**: Returns network passphrase and protocol version.
+- **`getLedgerEntries`**: Matches base64-encoded `LedgerKey` strings in incoming request params against registered fixture entries.
 
-It serves three JSON-RPC methods:
+## Seeding a Test Fixture Scenario
 
-- `getLatestLedger` — from `getLatestLedger.json` (fixture latest ledger:
-  4,566,959; `closeTime` 1788858382).
-- `getNetwork` — from `getNetwork.json` (passphrase
-  `Test SDF Network ; September 2015`, protocol 28).
-- `getLedgerEntries` — looks each requested key up in the entry map and returns
-  the ones present. Missing keys are simply absent from `entries` (which is how
-  the CLI sees an archived entry).
+To add a new integration test scenario:
 
-The config fixture (`getLedgerEntries_config.json`) carries the real
-protocol-28 settings: `max_entry_ttl` 3,110,400, `min_persistent_ttl` 120,960,
-`min_temporary_ttl` 720, `fee_write_ledger_entry` 2,500,
-`fee_write_1kb` 875, `persistent_rent_rate_denominator` 1,215 — byte-identical
-to the live values the tool read during the verification pass
-(`docs/live-verification.md`).
+1. **Load Base Fixtures**:
+   ```rust
+   let mock = MockRpc::from_fixtures("tests/fixtures")
+       .with_config_fixture("tests/fixtures");
+   ```
+2. **Register Synthetic Entries**:
+   Add custom ledger entries using base64 `LedgerKey` strings and raw JSON entry representations:
+   ```rust
+   let mock = mock.with_entry(key_b64, entry_json_str);
+   ```
+3. **Start the Mock Server**:
+   ```rust
+   let rpc_url = mock.start().await;
+   ```
+4. **Execute CLI Binary**:
+   Pass `--rpc-url <rpc_url>` to the compiled CLI binary and assert stdout, stderr, exit code, or XDR output files.
 
-## Seeding a new scenario
+## Historical Bugs Caught by the Mock Harness
 
-Two kinds of entries exist in the harness:
+The mock RPC test harness serves as a regression prevention system. Past bugs caught include:
 
-1. **Fixture entries** — real testnet responses, read from `tests/fixtures/`.
-   The `Counter` instance fixture (`getLedgerEntries_counter_instance.json`)
-   returns `entries: []`, which is the archived-instance case.
-2. **Synthetic entries** — built in the test with real `stellar-xdr` types and
-   registered via `with_entry`. The testnet has no contract sitting in each
-   band at a predictable TTL, so tests synthesize entries at Healthy /
-   ExpiringSoon / Critical TTLs. The shapes are real XDR; only the TTL values
-   are chosen by the test.
-
-To seed a new scenario, build the entry with `stellar-xdr`, encode it to base64,
-and register it under the base64 `LedgerKey` the CLI will request:
-
-```rust
-let (key, entry) = instance_entry_json(contract_bytes(COUNTER_CONTRACT), wasm_hash, latest + 600_000);
-mock = mock.with_entry(key, entry);
-```
-
-`liveUntilLedgerSeq` is the lever: `latest + 600_000` is Healthy
-(> 518,400), `latest + 200_000` is ExpiringSoon, `latest + 5_000` is Critical,
-and a missing entry is Archived.
-
-## Historical bugs this harness caught
-
-Each of these was a real failure mode; keep them in mind when adding scenarios.
-
-1. **Binary path resolution.** The integration tests spawn
-   `target/debug/soroban-state-sentinel` and assert it exists — the binary must
-   be built first (`cargo build -p sentinel-cli`). CI builds before testing.
-   A test that assumes the binary exists without building it fails at spawn
-   time with a confusing "not found" error.
-
-2. **Tokio runtime flavor.** The mock server runs on the test runtime's worker
-   threads, while the test blocks on `Command::output()` waiting for the CLI to
-   finish talking to it. Tests therefore must use
-   `#[tokio::test(flavor = "multi_thread")]` — a single-threaded runtime
-   deadlocks, because the mock can never accept a connection while the test
-   thread is blocked.
-
-3. **Fixture key mismatch.** The CLI decodes the `C…` strkey it is given and
-   scans under exactly those bytes. Mock entries must be keyed under the same
-   decoded bytes or the scan reports every entry as archived. Tests use the
-   `contract_bytes()` helper to derive the raw 32 bytes from the strkey before
-   building keys — never hardcode a key that does not match the contract id the
-   CLI will actually decode.
-
-4. **Missing account entry.** `restore` (and `extend`) with `--source-account`
-   fetch the account's ledger entry to compute the next sequence number. A test
-   that requests an envelope must seed the account entry too
-   (`with_entry(account_key(SOURCE_ACCOUNT), account_entry_json(...))`) or the
-   command fails with "source account … not found".
-
-A fifth related fix lives in the scanner itself: the contract code entry is
-fetched in its own RPC round (round 2), because the wasm hash is only known
-after the instance entry returns — looking it up in the round-1 response always
-reports it as archived. New scan scenarios must seed both the instance and the
-code entry for live-contract cases.
+1. **Binary Path Resolution**: Integration tests panicked if the CLI binary path (`target/debug/soroban-state-sentinel`) was not compiled prior to test execution. The harness now verifies binary existence before spawning subprocesses.
+2. **Tokio Runtime Flavor**: Mismatches between CLI async runtime macros (`#[tokio::main]`) and test multithreaded runtimes caused hanging socket connections.
+3. **Fixture Key Mismatch**: Discrepancies between expected base64 `LedgerKey::ContractData` XDR bytes and test key strings led to unhandled entry lookup misses.
+4. **Missing Account Entry**: Requesting `--source-account` for an account not present in `getLedgerEntries` resulted in unhandled RPC null responses during sequence fetching.
